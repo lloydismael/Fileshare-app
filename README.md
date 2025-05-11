@@ -3,9 +3,15 @@
 A simple Flask-based file sharing application with QR code generation capability.
 
 ## Version
-Current version: v1.3
+Current version: v1.5
 
 ### Changelog
+- v1.5: Added WebRTC P2P file sharing capabilities
+  - Implemented WebRTC peer connections
+  - Added real-time connection status notifications
+  - Enhanced UI with loading indicators
+  - Added toast notifications for connection events
+  - Improved file sharing security with P2P transfer
 - v1.3: Enhanced UI with Azure theme and animations
   - Added modern glass-morphism design
   - Implemented smooth animations
