@@ -7,9 +7,7 @@
             --azure-blue: #0078d4;
             --azure-light: #50a9ff;
             --azure-dark: #005a9e;
-        }
-
-        body {
+        }        body {
             font-family: 'Segoe UI', Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
@@ -19,7 +17,9 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-        }        .room-container {
+        }
+        
+        .room-container {
             background: rgba(255, 255, 255, 0.7);
             backdrop-filter: blur(10px);
             border-radius: 20px;
@@ -223,6 +223,7 @@
         const connectionRequest = document.getElementById('connectionRequest');
         let peerConnection;
         let pendingRequesterSid = null;
+        let isHost = false;
 
         function showToast(message, type = 'success') {
             const toastMsg = toast.querySelector('.toast-message');
@@ -233,7 +234,43 @@
             setTimeout(() => {
                 toast.classList.remove('show');
             }, 5000);
-        }        function respondToConnection(accepted) {
+        }        // Join room handling
+        socket.emit('join', { room: roomId });
+
+        socket.on('room_created', (data) => {
+            isHost = true;
+            status.innerHTML = 'Room created. Waiting for someone to join...';
+            loadingDots.style.display = 'none';
+            console.log('Room created, you are the host');
+        });
+
+        socket.on('waiting_for_host', (data) => {
+            isHost = false;
+            status.innerHTML = 'Waiting for host approval...';
+            console.log('Waiting for host approval');
+        });
+
+        socket.on('connection_request', (data) => {
+            if (isHost) {
+                pendingRequesterSid = data.sid;
+                connectionRequest.style.display = 'block';
+                showToast('Someone wants to join your room');
+            }
+        });
+
+        socket.on('connection_accepted', (data) => {
+            status.innerHTML = 'Connection accepted, establishing connection...';
+            setupPeerConnection();
+            initializeConnection();
+        });
+
+        socket.on('connection_rejected', (data) => {
+            status.innerHTML = 'Connection was declined by the host';
+            loadingDots.style.display = 'none';
+            showToast('Connection was declined by the host', 'error');
+        });
+
+        function respondToConnection(accepted) {
             if (pendingRequesterSid) {
                 socket.emit('connection_response', {
                     requester_sid: pendingRequesterSid,
@@ -243,42 +280,13 @@
                 pendingRequesterSid = null;
                 
                 if (accepted) {
-                    status.innerHTML = 'Connection accepted, establishing connection...';
+                    status.innerHTML = 'Waiting for peer connection...';
                 } else {
                     status.innerHTML = 'Connection declined';
                     loadingDots.style.display = 'none';
                 }
             }
         }
-
-        // Join room
-        socket.emit('join', { room: roomId });
-
-        // Handle room creation (becoming host)
-        socket.on('room_created', (data) => {
-            status.innerHTML = 'Waiting for someone to join...';
-            loadingDots.style.display = 'none';
-        });
-
-        // Handle connection requests (for host)
-        socket.on('connection_request', (data) => {
-            pendingRequesterSid = data.sid;
-            connectionRequest.style.display = 'block';
-            showToast('Someone wants to join your room');
-        });
-
-        // Handle connection response (for joiner)
-        socket.on('connection_accepted', (data) => {
-            status.innerHTML = 'Connection accepted, establishing connection...';
-            setupPeerConnection();
-            initializeConnection();
-        });
-
-        socket.on('connection_rejected', (data) => {
-            status.innerHTML = 'Connection was declined';
-            loadingDots.style.display = 'none';
-            showToast('Connection was declined by the host', 'error');
-        });
 
         // WebRTC setup
         function setupPeerConnection() {
@@ -299,6 +307,7 @@
                     });
                 }
             };            peerConnection.onconnectionstatechange = () => {
+                console.log('Connection state changed:', peerConnection.connectionState);
                 switch (peerConnection.connectionState) {
                     case 'connected':
                         status.innerHTML = 'Connected successfully!';
@@ -307,7 +316,7 @@
                         loadingDots.style.display = 'none';
                         break;
                     case 'connecting':
-                        status.innerHTML = 'Establishing connection...';
+                        status.innerHTML = 'Establishing peer connection...';
                         loadingDots.style.display = 'inline-flex';
                         break;
                     case 'disconnected':
@@ -316,24 +325,45 @@
                         loadingDots.style.display = 'none';
                         showToast('Connection lost', 'error');
                         document.querySelector('.file-transfer').style.display = 'none';
+                        // Clean up and allow reconnection
+                        if (peerConnection) {
+                            peerConnection.close();
+                            peerConnection = null;
+                        }
+                        break;
+                    case 'closed':
+                        status.innerHTML = 'Connection closed.';
+                        loadingDots.style.display = 'none';
+                        document.querySelector('.file-transfer').style.display = 'none';
                         break;
                 }
             };
 
-            // Initialize data channel for the host
-            if (!rooms[roomId]?.host) {
+            // Set up data channel
+            if (!isHost) {
                 const dataChannel = peerConnection.createDataChannel('fileTransfer');
                 setupDataChannel(dataChannel);
             }
 
-            // Set up data channel
             peerConnection.ondatachannel = (event) => {
-                const dataChannel = event.channel;
-                setupDataChannel(dataChannel);
+                setupDataChannel(event.channel);
             };
         }
 
-        // Handle offer
+        async function initializeConnection() {
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('offer', {
+                    room: roomId,
+                    sdp: offer
+                });
+            } catch (err) {
+                console.error('Error creating offer:', err);
+                showToast('Failed to establish connection', 'error');
+            }
+        }
+
         socket.on('offer', async (data) => {
             status.innerHTML = 'Offer received, establishing connection...';
             setupPeerConnection();
@@ -349,7 +379,17 @@
                 console.error('Error handling offer:', err);
                 showToast('Failed to establish connection', 'error');
             }
-        });        // Handle ICE candidates
+        });
+
+        socket.on('answer', async (data) => {
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            } catch (err) {
+                console.error('Error handling answer:', err);
+                showToast('Failed to establish connection', 'error');
+            }
+        });
+
         socket.on('ice_candidate', (data) => {
             if (peerConnection) {
                 peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
@@ -359,23 +399,7 @@
             }
         });
 
-        // Initialize WebRTC connection
-        async function initializeConnection() {
-            try {
-                // Create and send offer (only for the joining peer)
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                socket.emit('offer', {
-                    room: roomId,
-                    sdp: offer
-                });
-            } catch (err) {
-                console.error('Error creating offer:', err);
-                showToast('Failed to establish connection', 'error');
-            }
-        }
-
-        // File transfer
+        // File transfer handling
         let dataChannel;
 
         function setupDataChannel(channel) {
@@ -408,7 +432,6 @@
         function handleReceivedData(event) {
             const data = JSON.parse(event.data);
             if (data.type === 'file') {
-                // Create download link
                 const a = document.createElement('a');
                 a.href = data.data;
                 a.download = data.name;

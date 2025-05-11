@@ -98,26 +98,57 @@ def on_join(data):
     room_id = data['room']
     join_room(room_id)
     if room_id not in rooms:
-        rooms[room_id] = {'peers': set(), 'host': request.sid}
-        # If this is the first peer, they become the host
+        # First person to join becomes the host
+        rooms[room_id] = {'peers': set(), 'host': request.sid, 'pending_requests': set()}
         emit('room_created', {'sid': request.sid}, room=room_id)
+        print(f"Room {room_id} created with host {request.sid}")
     else:
-        # If this is a joining peer, send connection request to host
+        # Someone trying to join an existing room
         host_sid = rooms[room_id]['host']
-        connection_requests[request.sid] = {'room': room_id, 'status': 'pending'}
-        emit('connection_request', {'sid': request.sid}, room=host_sid)
+        if request.sid != host_sid:  # Only send request if not the host
+            connection_requests[request.sid] = {
+                'room': room_id,
+                'status': 'pending',
+                'timestamp': time.time()
+            }
+            rooms[room_id]['pending_requests'].add(request.sid)
+            # Send request to host
+            emit('connection_request', {
+                'sid': request.sid,
+                'room': room_id
+            }, room=host_sid)
+            print(f"Connection request sent from {request.sid} to host {host_sid} for room {room_id}")
+        emit('waiting_for_host', {'host_sid': host_sid}, room=request.sid)
 
 @socketio.on('connection_response')
 def on_connection_response(data):
     requester_sid = data['requester_sid']
     accepted = data['accepted']
+    
+    if requester_sid not in connection_requests:
+        print(f"No pending request found for {requester_sid}")
+        return
+        
     room_id = connection_requests[requester_sid]['room']
     
     if accepted:
-        rooms[room_id]['peers'].add(requester_sid)
-        emit('connection_accepted', {'sid': request.sid}, room=requester_sid)
+        if room_id in rooms:
+            rooms[room_id]['peers'].add(requester_sid)
+            rooms[room_id]['pending_requests'].discard(requester_sid)
+            emit('connection_accepted', {
+                'sid': request.sid,
+                'room': room_id
+            }, room=requester_sid)
+            print(f"Connection accepted for {requester_sid} in room {room_id}")
     else:
-        emit('connection_rejected', {'sid': request.sid}, room=requester_sid)
+        emit('connection_rejected', {
+            'sid': request.sid,
+            'room': room_id
+        }, room=requester_sid)
+        print(f"Connection rejected for {requester_sid} in room {room_id}")
+        
+        if room_id in rooms:
+            rooms[room_id]['pending_requests'].discard(requester_sid)
     
     del connection_requests[requester_sid]
 
