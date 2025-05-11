@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Join P2P Room</title>
+    <style>
+        :root {
+            --azure-blue: #0078d4;
+            --azure-light: #50a9ff;
+            --azure-dark: #005a9e;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e6f3ff 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .room-container {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            width: 80%;
+            max-width: 500px;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        h1 {
+            color: var(--azure-dark);
+            margin-bottom: 30px;
+            opacity: 0;
+            animation: fadeInDown 0.8s ease forwards;
+        }
+
+        .status {
+            margin: 20px 0;
+            color: var(--azure-blue);
+            opacity: 0;
+            animation: fadeInUp 0.8s ease 0.3s forwards;
+        }
+
+        .file-transfer {
+            margin: 20px 0;
+            display: none;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Join P2P Room</h1>
+    <div class="room-container">
+        <div class="status">Connecting to room...</div>
+        <div class="file-transfer">
+            <input type="file" id="fileInput">
+            <button onclick="sendFile()">Send File</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const roomId = '{{ room_id }}';
+        let peerConnection;
+
+        // Join room
+        socket.emit('join', { room: roomId });
+
+        // WebRTC setup
+        function setupPeerConnection() {
+            peerConnection = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ]
+            });
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice_candidate', {
+                        room: roomId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            // Set up data channel
+            peerConnection.ondatachannel = (event) => {
+                const dataChannel = event.channel;
+                setupDataChannel(dataChannel);
+            };
+        }
+
+        // Handle offer
+        socket.on('offer', async (data) => {
+            setupPeerConnection();
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', {
+                room: roomId,
+                sdp: answer
+            });
+            document.querySelector('.status').textContent = 'Connected!';
+            document.querySelector('.file-transfer').style.display = 'block';
+        });
+
+        // Handle ICE candidates
+        socket.on('ice_candidate', (data) => {
+            if (peerConnection) {
+                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        });
+
+        // File transfer
+        let dataChannel;
+
+        function setupDataChannel(channel) {
+            dataChannel = channel;
+            dataChannel.onmessage = handleReceivedData;
+        }
+
+        function sendFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                dataChannel.send(JSON.stringify({
+                    type: 'file',
+                    name: file.name,
+                    data: e.target.result
+                }));
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleReceivedData(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'file') {
+                // Create download link
+                const a = document.createElement('a');
+                a.href = data.data;
+                a.download = data.name;
+                a.click();
+            }
+        }
+    </script>
+</body>
+</html>

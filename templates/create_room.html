@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create P2P Room</title>
+    <style>
+        :root {
+            --azure-blue: #0078d4;
+            --azure-light: #50a9ff;
+            --azure-dark: #005a9e;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e6f3ff 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .room-container {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            width: 80%;
+            max-width: 500px;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        h1 {
+            color: var(--azure-dark);
+            margin-bottom: 30px;
+            opacity: 0;
+            animation: fadeInDown 0.8s ease forwards;
+        }
+
+        .qr-code {
+            margin: 30px 0;
+            opacity: 0;
+            animation: fadeInScale 0.8s ease 0.6s forwards;
+        }
+
+        .qr-code img {
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .room-id {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            word-break: break-all;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease 0.3s forwards;
+        }
+
+        .status {
+            margin: 20px 0;
+            color: var(--azure-blue);
+            opacity: 0;
+            animation: fadeInUp 0.8s ease 0.9s forwards;
+        }
+
+        .file-list {
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>P2P File Share Room</h1>
+    <div class="room-container">
+        <p>Share this QR code or room ID with others to establish a P2P connection:</p>
+        <div class="qr-code">
+            <img src="{{ url_for('serve_qr', file_id=room_id + '_room') }}" alt="Room QR Code">
+        </div>
+        <div class="room-id">
+            Room ID: <strong>{{ room_id }}</strong>
+        </div>
+        <div class="status">Waiting for peers to connect...</div>
+        <div class="file-list"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const roomId = '{{ room_id }}';
+
+        // Join room
+        socket.emit('join', { room: roomId });
+
+        // Connection handling
+        socket.on('user_joined', (data) => {
+            console.log('User joined:', data.sid);
+            document.querySelector('.status').textContent = 'Peer connected!';
+            setupPeerConnection(data.sid);
+        });
+
+        socket.on('user_left', (data) => {
+            console.log('User left:', data.sid);
+            document.querySelector('.status').textContent = 'Waiting for peers to connect...';
+        });
+
+        // WebRTC setup
+        const peerConnections = {};
+
+        async function setupPeerConnection(peerId) {
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ]
+            });
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice_candidate', {
+                        room: roomId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            peerConnections[peerId] = pc;
+
+            // Create and send offer
+            try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                socket.emit('offer', {
+                    room: roomId,
+                    sdp: offer
+                });
+            } catch (err) {
+                console.error('Error creating offer:', err);
+            }
+        }
+
+        socket.on('ice_candidate', (data) => {
+            const pc = peerConnections[data.sender];
+            if (pc) {
+                pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        });
+
+        socket.on('answer', (data) => {
+            const pc = peerConnections[data.answerer];
+            if (pc) {
+                pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            }
+        });
+    </script>
+</body>
+</html>

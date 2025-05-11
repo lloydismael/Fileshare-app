@@ -3,29 +3,161 @@
 <head>
     <title>Upload Success</title>
     <style>
+        :root {
+            --azure-blue: #0078d4;
+            --azure-light: #50a9ff;
+            --azure-dark: #005a9e;
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
             text-align: center;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e6f3ff 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
+
+        h1 {
+            color: var(--azure-dark);
+            font-weight: 500;
+            margin-bottom: 40px;
+            opacity: 0;
+            animation: fadeInDown 0.8s ease forwards;
+        }
+
+        .success-container {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            width: 80%;
+            max-width: 500px;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease 0.3s forwards;
+        }
+
         .qr-code {
-            margin: 20px 0;
+            margin: 30px 0;
+            opacity: 0;
+            animation: fadeInScale 0.8s ease 0.6s forwards;
         }
+
+        .qr-code img {
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .qr-code img:hover {
+            transform: scale(1.05);
+        }
+
         .download-link {
-            margin: 20px 0;
+            margin: 30px 0;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease 0.9s forwards;
+        }
+
+        .download-link p {
+            color: var(--azure-dark);
+            margin-bottom: 10px;
+        }
+
+        .download-link a {
+            color: var(--azure-blue);
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 12px 25px;
+            border-radius: 10px;
+            display: inline-block;
+            transition: all 0.3s ease;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            word-break: break-all;
+        }
+
+        .download-link a:hover {
+            background: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 120, 212, 0.2);
+        }
+
+        .upload-another {
+            margin-top: 30px;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease 1.2s forwards;
+        }
+
+        .upload-another a {
+            background: var(--azure-blue);
+            color: white;
+            text-decoration: none;
+            padding: 12px 25px;
+            border-radius: 10px;
+            display: inline-block;
+            transition: all 0.3s ease;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .upload-another a:hover {
+            background: var(--azure-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 120, 212, 0.3);
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
         }
     </style>
 </head>
 <body>
-    <h1>File Upload Success!</h1>    <div class="qr-code">
-        <img src="{{ url_for('serve_qr', file_id=file_id) }}" alt="QR Code">
+    <h1>File Upload Success!</h1>
+    <div class="success-container">
+        <div class="qr-code">
+            <img src="{{ url_for('serve_qr', file_id=file_id) }}" alt="QR Code">
+        </div>
+        <div class="download-link">
+            <p>Download link:</p>
+            <a href="{{ url_for('download_file', file_id=file_id) }}">{{ url_for('download_file', file_id=file_id, _external=True) }}</a>
+        </div>
+        <div class="upload-another">
+            <a href="/">Upload another file</a>
+        </div>
     </div>
-    <div class="download-link">
-        <p>Download link:</p>
-        <a href="{{ url_for('download_file', file_id=file_id) }}">{{ url_for('download_file', file_id=file_id, _external=True) }}</a>
-    </div>
-    <p><a href="/">Upload another file</a></p>
 </body>
 </html>
