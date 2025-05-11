@@ -22,6 +22,9 @@ file_mapping = {}
 # Store room information
 rooms = {}
 
+# Store connection requests
+connection_requests = {}
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -95,9 +98,28 @@ def on_join(data):
     room_id = data['room']
     join_room(room_id)
     if room_id not in rooms:
-        rooms[room_id] = {'peers': set()}
-    rooms[room_id]['peers'].add(request.sid)
-    emit('user_joined', {'sid': request.sid}, room=room_id)
+        rooms[room_id] = {'peers': set(), 'host': request.sid}
+        # If this is the first peer, they become the host
+        emit('room_created', {'sid': request.sid}, room=room_id)
+    else:
+        # If this is a joining peer, send connection request to host
+        host_sid = rooms[room_id]['host']
+        connection_requests[request.sid] = {'room': room_id, 'status': 'pending'}
+        emit('connection_request', {'sid': request.sid}, room=host_sid)
+
+@socketio.on('connection_response')
+def on_connection_response(data):
+    requester_sid = data['requester_sid']
+    accepted = data['accepted']
+    room_id = connection_requests[requester_sid]['room']
+    
+    if accepted:
+        rooms[room_id]['peers'].add(requester_sid)
+        emit('connection_accepted', {'sid': request.sid}, room=requester_sid)
+    else:
+        emit('connection_rejected', {'sid': request.sid}, room=requester_sid)
+    
+    del connection_requests[requester_sid]
 
 @socketio.on('leave')
 def on_leave(data):

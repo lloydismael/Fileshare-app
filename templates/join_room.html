@@ -19,9 +19,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-        }
-
-        .room-container {
+        }        .room-container {
             background: rgba(255, 255, 255, 0.7);
             backdrop-filter: blur(10px);
             border-radius: 20px;
@@ -31,8 +29,53 @@
             border: 1px solid rgba(255, 255, 255, 0.3);
             width: 80%;
             max-width: 500px;
+            margin: 20px auto;
             opacity: 0;
             animation: fadeInUp 0.8s ease forwards;
+        }
+
+        .connection-request {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: none;
+            animation: fadeInUp 0.5s ease;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .btn-accept {
+            background-color: var(--azure-blue);
+            color: white;
+        }
+
+        .btn-accept:hover {
+            background-color: var(--azure-dark);
+        }
+
+        .btn-decline {
+            background-color: #f1f1f1;
+            color: #333;
+        }
+
+        .btn-decline:hover {
+            background-color: #e1e1e1;
         }
 
         h1 {
@@ -144,8 +187,7 @@
     </style>
 </head>
 <body>
-    <h1>Join P2P Room</h1>
-    <div class="room-container">
+    <h1>Join P2P Room</h1>    <div class="room-container">
         <div class="status">
             Connecting to room...
             <div class="loading-dots">
@@ -154,9 +196,16 @@
                 <span></span>
             </div>
         </div>
+        <div class="connection-request" id="connectionRequest">
+            <p>Someone wants to join your room</p>
+            <div class="button-group">
+                <button class="btn btn-accept" onclick="respondToConnection(true)">Accept</button>
+                <button class="btn btn-decline" onclick="respondToConnection(false)">Decline</button>
+            </div>
+        </div>
         <div class="file-transfer">
             <input type="file" id="fileInput">
-            <button onclick="sendFile()">Send File</button>
+            <button class="btn btn-accept" onclick="sendFile()">Send File</button>
         </div>
     </div>
 
@@ -171,7 +220,9 @@
         const toast = document.getElementById('toast');
         const status = document.querySelector('.status');
         const loadingDots = document.querySelector('.loading-dots');
+        const connectionRequest = document.getElementById('connectionRequest');
         let peerConnection;
+        let pendingRequesterSid = null;
 
         function showToast(message, type = 'success') {
             const toastMsg = toast.querySelector('.toast-message');
@@ -182,13 +233,58 @@
             setTimeout(() => {
                 toast.classList.remove('show');
             }, 5000);
+        }        function respondToConnection(accepted) {
+            if (pendingRequesterSid) {
+                socket.emit('connection_response', {
+                    requester_sid: pendingRequesterSid,
+                    accepted: accepted
+                });
+                connectionRequest.style.display = 'none';
+                pendingRequesterSid = null;
+                
+                if (accepted) {
+                    status.innerHTML = 'Connection accepted, establishing connection...';
+                } else {
+                    status.innerHTML = 'Connection declined';
+                    loadingDots.style.display = 'none';
+                }
+            }
         }
 
         // Join room
         socket.emit('join', { room: roomId });
 
+        // Handle room creation (becoming host)
+        socket.on('room_created', (data) => {
+            status.innerHTML = 'Waiting for someone to join...';
+            loadingDots.style.display = 'none';
+        });
+
+        // Handle connection requests (for host)
+        socket.on('connection_request', (data) => {
+            pendingRequesterSid = data.sid;
+            connectionRequest.style.display = 'block';
+            showToast('Someone wants to join your room');
+        });
+
+        // Handle connection response (for joiner)
+        socket.on('connection_accepted', (data) => {
+            status.innerHTML = 'Connection accepted, establishing connection...';
+            setupPeerConnection();
+            initializeConnection();
+        });
+
+        socket.on('connection_rejected', (data) => {
+            status.innerHTML = 'Connection was declined';
+            loadingDots.style.display = 'none';
+            showToast('Connection was declined by the host', 'error');
+        });
+
         // WebRTC setup
         function setupPeerConnection() {
+            if (peerConnection) {
+                peerConnection.close();
+            }
             peerConnection = new RTCPeerConnection({
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' }
@@ -202,20 +298,33 @@
                         candidate: event.candidate
                     });
                 }
-            };
-
-            peerConnection.onconnectionstatechange = () => {
-                if (peerConnection.connectionState === 'connected') {
-                    status.innerHTML = 'Connected successfully!';
-                    showToast('Connected successfully! Ready for file sharing.');
-                    document.querySelector('.file-transfer').style.display = 'block';
-                } else if (peerConnection.connectionState === 'disconnected') {
-                    status.innerHTML = 'Connection lost. Please refresh the page to reconnect.';
-                    loadingDots.style.display = 'none';
-                    showToast('Connection lost', 'error');
-                    document.querySelector('.file-transfer').style.display = 'none';
+            };            peerConnection.onconnectionstatechange = () => {
+                switch (peerConnection.connectionState) {
+                    case 'connected':
+                        status.innerHTML = 'Connected successfully!';
+                        showToast('Connected successfully! Ready for file sharing.');
+                        document.querySelector('.file-transfer').style.display = 'block';
+                        loadingDots.style.display = 'none';
+                        break;
+                    case 'connecting':
+                        status.innerHTML = 'Establishing connection...';
+                        loadingDots.style.display = 'inline-flex';
+                        break;
+                    case 'disconnected':
+                    case 'failed':
+                        status.innerHTML = 'Connection lost. Please refresh the page to reconnect.';
+                        loadingDots.style.display = 'none';
+                        showToast('Connection lost', 'error');
+                        document.querySelector('.file-transfer').style.display = 'none';
+                        break;
                 }
             };
+
+            // Initialize data channel for the host
+            if (!rooms[roomId]?.host) {
+                const dataChannel = peerConnection.createDataChannel('fileTransfer');
+                setupDataChannel(dataChannel);
+            }
 
             // Set up data channel
             peerConnection.ondatachannel = (event) => {
@@ -240,9 +349,7 @@
                 console.error('Error handling offer:', err);
                 showToast('Failed to establish connection', 'error');
             }
-        });
-
-        // Handle ICE candidates
+        });        // Handle ICE candidates
         socket.on('ice_candidate', (data) => {
             if (peerConnection) {
                 peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
@@ -251,6 +358,22 @@
                     });
             }
         });
+
+        // Initialize WebRTC connection
+        async function initializeConnection() {
+            try {
+                // Create and send offer (only for the joining peer)
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('offer', {
+                    room: roomId,
+                    sdp: offer
+                });
+            } catch (err) {
+                console.error('Error creating offer:', err);
+                showToast('Failed to establish connection', 'error');
+            }
+        }
 
         // File transfer
         let dataChannel;
