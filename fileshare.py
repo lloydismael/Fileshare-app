@@ -3,14 +3,33 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 import qrcode
 import os
 import json
+import time
+import logging
+from datetime import datetime
 from werkzeug.utils import secure_filename
 import uuid
+import eventlet
+eventlet.monkey_patch()
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['SECRET_KEY'] = 'your-secret-key-here'  # Required for sessions
-socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize SocketIO with WebSocket support
+socketio = SocketIO(app, 
+                   cors_allowed_origins="*",
+                   async_mode='eventlet',
+                   ping_timeout=60,
+                   ping_interval=25)
 
 # Create uploads folder if it doesn't exist
 if not os.path.exists(app.config['UPLOAD_FOLDER']):

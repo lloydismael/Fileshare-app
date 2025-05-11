@@ -29,4 +29,4 @@ USER nobody
 EXPOSE 5000
 
 # Run the application with eventlet
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--with-threads"]
+CMD ["python", "fileshare.py"]
