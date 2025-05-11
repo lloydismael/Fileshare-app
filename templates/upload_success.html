@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Success</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .qr-code {
+            margin: 20px 0;
+        }
+        .download-link {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>File Upload Success!</h1>
+    <div class="qr-code">
+        <img src="/uploads/{{ file_id }}.png" alt="QR Code">
+    </div>
+    <div class="download-link">
+        <p>Download link:</p>
+        <a href="{{ url_for('download_file', file_id=file_id) }}">{{ url_for('download_file', file_id=file_id, _external=True) }}</a>
+    </div>
+    <p><a href="/">Upload another file</a></p>
+</body>
+</html>

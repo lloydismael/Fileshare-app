@@ -1,0 +1,11 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+SUMMARY:AZ-900:Microsoft Azure Fundamentals
+TIME:65 minutes
+DTSTART:20250529T160000Z
+DTEND:20250529T173500Z
+DESCRIPTION:Your appointment is approaching! Please log in to your account or check your email for next steps in how to prepare for your exam appointment.\nAppointment: Friday, 30 May 2025 Check-in time: 12:00 am Asia/Manila - PST Start time: 12:30 am Asia/Manila - PST\n
+
+END:VEVENT
+END:VCALENDAR
