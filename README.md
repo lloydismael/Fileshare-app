@@ -2,6 +2,17 @@
 
 A simple Flask-based file sharing application with QR code generation capability.
 
+## Version
+Current version: v1.3
+
+### Changelog
+- v1.3: Enhanced UI with Azure theme and animations
+  - Added modern glass-morphism design
+  - Implemented smooth animations
+  - Improved button and input styles
+  - Added Azure color scheme
+  - Enhanced mobile responsiveness
+
 ## Features
 
 - File upload functionality
