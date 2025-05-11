@@ -19,9 +19,8 @@
     </style>
 </head>
 <body>
-    <h1>File Upload Success!</h1>
-    <div class="qr-code">
-        <img src="/uploads/{{ file_id }}.png" alt="QR Code">
+    <h1>File Upload Success!</h1>    <div class="qr-code">
+        <img src="{{ url_for('serve_qr', file_id=file_id) }}" alt="QR Code">
     </div>
     <div class="download-link">
         <p>Download link:</p>

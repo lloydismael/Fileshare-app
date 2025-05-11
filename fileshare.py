@@ -57,5 +57,12 @@ def download_file(file_id):
     filename = file_mapping[file_id]
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
+@app.route('/qr/<file_id>.png')
+def serve_qr(file_id):
+    qr_path = os.path.join(app.config['UPLOAD_FOLDER'], f'{file_id}.png')
+    if not os.path.exists(qr_path):
+        return 'QR code not found', 404
+    return send_file(qr_path, mimetype='image/png')
+
 if __name__ == '__main__':
     app.run(debug=True)
