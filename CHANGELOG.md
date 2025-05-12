@@ -2,6 +2,28 @@
 
 All notable changes to the Fileshare App project will be documented in this file.
 
+## [Version 2.1] - 2025-05-12
+
+### Added
+- Enhanced WebRTC configuration with multiple STUN/TURN servers
+- Added automatic connection retry mechanism with exponential backoff
+- Implemented chunked file transfer with progress tracking
+- Added comprehensive error handling for file transfers
+- Added connection state monitoring and user feedback
+
+### Fixed
+- Improved P2P connection reliability after QR code scanning
+- Enhanced ICE candidate handling for better NAT traversal
+- Fixed file transfer issues with large files
+- Improved error recovery during connection failures
+- Fixed data channel setup and management
+
+### Changed
+- Updated WebRTC configuration to use ICE candidate pooling
+- Enhanced file transfer UI with progress indicators
+- Improved error messaging and user feedback
+- Updated connection retry logic with maximum attempts
+
 ## [Version 2.0] - 2025-05-12
 
 ### Added

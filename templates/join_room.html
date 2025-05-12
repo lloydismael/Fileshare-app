@@ -295,18 +295,33 @@
             }
             peerConnection = new RTCPeerConnection({
                 iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' }
-                ]
+                    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+                    {
+                        urls: 'turn:numb.viagenie.ca',
+                        credential: 'muazkh',
+                        username: 'webrtc@live.com'
+                    }
+                ],
+                iceCandidatePoolSize: 10,
+                iceTransportPolicy: 'all'
             });
 
+            // ICE candidate handling
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
+                    console.log('New ICE candidate:', event.candidate.type);
                     socket.emit('ice_candidate', {
                         room: roomId,
                         candidate: event.candidate
                     });
                 }
-            };            peerConnection.onconnectionstatechange = () => {
+            };
+
+            peerConnection.onicegatheringstatechange = () => {
+                console.log('ICE gathering state:', peerConnection.iceGatheringState);
+            };
+
+            peerConnection.onconnectionstatechange = () => {
                 console.log('Connection state changed:', peerConnection.connectionState);
                 switch (peerConnection.connectionState) {
                     case 'connected':
@@ -321,15 +336,11 @@
                         break;
                     case 'disconnected':
                     case 'failed':
-                        status.innerHTML = 'Connection lost. Please refresh the page to reconnect.';
-                        loadingDots.style.display = 'none';
-                        showToast('Connection lost', 'error');
+                        status.innerHTML = 'Connection lost. Attempting to reconnect...';
+                        loadingDots.style.display = 'inline-flex';
+                        showToast('Connection issues detected. Trying to reconnect...', 'error');
                         document.querySelector('.file-transfer').style.display = 'none';
-                        // Clean up and allow reconnection
-                        if (peerConnection) {
-                            peerConnection.close();
-                            peerConnection = null;
-                        }
+                        retryConnection();
                         break;
                     case 'closed':
                         status.innerHTML = 'Connection closed.';
@@ -339,15 +350,41 @@
                 }
             };
 
-            // Set up data channel
+            // Set up data channel with error handling
             if (!isHost) {
-                const dataChannel = peerConnection.createDataChannel('fileTransfer');
-                setupDataChannel(dataChannel);
+                try {
+                    const dataChannel = peerConnection.createDataChannel('fileTransfer', {
+                        ordered: true,
+                        maxRetransmits: 3
+                    });
+                    setupDataChannel(dataChannel);
+                } catch (err) {
+                    console.error('Error creating data channel:', err);
+                    showToast('Failed to create data channel. Please refresh the page.', 'error');
+                }
             }
 
             peerConnection.ondatachannel = (event) => {
                 setupDataChannel(event.channel);
             };
+        }
+
+        let connectionRetries = 0;
+        const MAX_RETRIES = 3;
+
+        function retryConnection() {
+            if (connectionRetries < MAX_RETRIES) {
+                connectionRetries++;
+                console.log(`Retrying connection (attempt ${connectionRetries}/${MAX_RETRIES})`);
+                setTimeout(() => {
+                    setupPeerConnection();
+                    initializeConnection();
+                }, 2000 * connectionRetries); // Exponential backoff
+            } else {
+                status.innerHTML = 'Connection failed. Please refresh the page to try again.';
+                loadingDots.style.display = 'none';
+                showToast('Connection failed after multiple attempts. Please refresh the page.', 'error');
+            }
         }
 
         async function initializeConnection() {
@@ -401,41 +438,133 @@
 
         // File transfer handling
         let dataChannel;
+        const CHUNK_SIZE = 16384; // 16KB chunks
+        let receiveBuffer = [];
+        let receivedSize = 0;
+        let fileSize = 0;
+        let fileName = '';
 
         function setupDataChannel(channel) {
             dataChannel = channel;
-            dataChannel.onmessage = handleReceivedData;
+            dataChannel.binaryType = 'arraybuffer';
+            
             dataChannel.onopen = () => {
                 showToast('File sharing channel ready');
+                document.querySelector('.file-transfer').style.display = 'block';
             };
+            
             dataChannel.onclose = () => {
                 showToast('File sharing channel closed', 'error');
+                document.querySelector('.file-transfer').style.display = 'none';
+            };
+
+            dataChannel.onmessage = handleReceivedData;
+            
+            dataChannel.onerror = (error) => {
+                console.error('Data channel error:', error);
+                showToast('Error in file transfer channel', 'error');
             };
         }
 
-        function sendFile() {
+        async function sendFile() {
             const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
-            if (!file) return;
+            if (!file) {
+                showToast('Please select a file first', 'error');
+                return;
+            }
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
+            try {
+                // Send file metadata first
                 dataChannel.send(JSON.stringify({
-                    type: 'file',
+                    type: 'file-info',
                     name: file.name,
-                    data: e.target.result
+                    size: file.size
                 }));
-            };
-            reader.readAsDataURL(file);
+
+                // Read and send the file in chunks
+                const reader = new FileReader();
+                let offset = 0;
+
+                reader.onerror = (error) => {
+                    showToast('Error reading file', 'error');
+                    console.error('Error reading file:', error);
+                };
+
+                reader.onload = (e) => {
+                    dataChannel.send(e.target.result);
+                    offset += e.target.result.byteLength;
+                    
+                    // Update progress
+                    const progress = Math.min(100, Math.round((offset / file.size) * 100));
+                    status.innerHTML = `Sending file: ${progress}%`;
+                    
+                    if (offset < file.size) {
+                        // Read the next chunk
+                        readChunk(file, offset);
+                    } else {
+                        // File transfer complete
+                        status.innerHTML = 'File sent successfully!';
+                        showToast('File sent successfully!');
+                    }
+                };
+
+                // Start reading the first chunk
+                readChunk(file, 0);
+
+            } catch (err) {
+                console.error('Error sending file:', err);
+                showToast('Failed to send file', 'error');
+                status.innerHTML = 'Failed to send file';
+            }
+        }
+
+        function readChunk(file, offset) {
+            const slice = file.slice(offset, offset + CHUNK_SIZE);
+            const reader = new FileReader();
+            reader.readAsArrayBuffer(slice);
         }
 
         function handleReceivedData(event) {
-            const data = JSON.parse(event.data);
-            if (data.type === 'file') {
-                const a = document.createElement('a');
-                a.href = data.data;
-                a.download = data.name;
-                a.click();
+            try {
+                if (typeof event.data === 'string') {
+                    const metadata = JSON.parse(event.data);
+                    if (metadata.type === 'file-info') {
+                        // Reset receive buffer for new file
+                        receiveBuffer = [];
+                        receivedSize = 0;
+                        fileSize = metadata.size;
+                        fileName = metadata.name;
+                        status.innerHTML = 'Receiving file...';
+                    }
+                } else {
+                    // Handle file chunk
+                    receiveBuffer.push(event.data);
+                    receivedSize += event.data.byteLength;
+
+                    // Update progress
+                    const progress = Math.min(100, Math.round((receivedSize / fileSize) * 100));
+                    status.innerHTML = `Receiving file: ${progress}%`;
+
+                    if (receivedSize === fileSize) {
+                        // File transfer complete
+                        const received = new Blob(receiveBuffer);
+                        receiveBuffer = [];
+
+                        // Create download link
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(received);
+                        a.download = fileName;
+                        a.click();
+
+                        status.innerHTML = 'File received successfully!';
+                        showToast('File received successfully!');
+                    }
+                }
+            } catch (err) {
+                console.error('Error handling received data:', err);
+                showToast('Error processing received file', 'error');
+                status.innerHTML = 'Error receiving file';
             }
         }
     </script>
