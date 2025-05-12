@@ -2,6 +2,27 @@
 
 All notable changes to the Fileshare App project will be documented in this file.
 
+## [Version 2.0] - 2025-05-12
+
+### Added
+- Implemented WebRTC data channel support for P2P file sharing
+- Added direct peer-to-peer file transfer capability
+- Introduced chunk-based file transfer system
+- Added file transfer progress tracking
+- Implemented WebRTC signaling system
+- Added support for multiple simultaneous transfers
+
+### Fixed
+- Improved connection stability with ICE candidate handling
+- Enhanced peer connection management
+- Fixed user joining issues with better state management
+
+### Changed
+- Updated connection system to prioritize WebRTC
+- Enhanced room management with better user tracking
+- Improved logging system for better debugging
+- Added transfer mode selection (WebRTC/Socket fallback)
+
 ## [Version 1.9] - 2025-05-12
 
 ### Added
